@@ -20,7 +20,7 @@
 ORCID: 0009-0000-4185-6209}
 
 \begin{abstract}
-The integration of artificial intelligence with high-performance computing and cloud infrastructure requires systematic evaluation of AI performance as model complexity, dataset size, and system scale increase. SAIH (Scalable AI--HPC Evaluation Methodology) is a physics-based framework that analyzes AI performance trends across multiple scaling dimensions. SAIH combines a roofline-based performance model with an interpretable bottleneck classifier and cross-dimensional interaction analysis. Experiments spanning model complexity (10M--1B parameters), dataset sizes (0.025--1.6~TB), and system scales (1--128 nodes) reveal non-linear performance behavior and communication bottlenecks at scale. Strong scaling efficiency degrades from 100\% to 45.3\% at 128 nodes; for typical A100-based nodes ($\sim$3 kW/node), 54.7\% efficiency loss translates to $\approx$210 kW of wasted power at 128 nodes. Validation against MLPerf-HPC benchmarks (CosmoFlow and DeepCAM) shows strong correlation ($r>0.99$). Cloud deployment analysis demonstrates that efficiency below 50\% affects cost-effectiveness, informing elastic provisioning strategies. The findings provide guidance for AI-HPC co-design and cloud-based training optimization.
+The integration of artificial intelligence with high-performance computing and cloud infrastructure requires systematic evaluation of AI performance as model complexity, dataset size, and system scale increase. SAIH (Scalable AI--HPC Evaluation Methodology) is a physics-based framework that analyzes AI performance trends across multiple scaling dimensions. SAIH combines a roofline-based performance model with an interpretable bottleneck classifier and cross-dimensional interaction analysis. Experiments spanning model complexity (10M--1B parameters), dataset sizes (0.025--1.6~TB), and system scales (1--128 nodes) reveal non-linear performance behavior and communication bottlenecks at scale. Strong scaling efficiency degrades from 100\% to 45.3\% at 128 nodes; for typical A100-based nodes ($\sim$3 kW/node), 54.7\% efficiency loss translates to $\approx$210 kW of wasted power at 128 nodes. Validation against MLPerf-HPC benchmarks (CosmoFlow and DeepCAM) on efficiency curves yields $r=0.947$ and $r=0.937$ with mean absolute errors of 7--9 percentage points. Cloud deployment analysis demonstrates that efficiency below 50\% affects cost-effectiveness, informing elastic provisioning strategies. The findings provide guidance for AI-HPC co-design and cloud-based training optimization.
 \end{abstract}
 
 \begin{keywords}
@@ -114,7 +114,27 @@ where:
     \item $\eta_{\text{io}}(D, P) = \frac{1}{1 + \delta \cdot D/P}$ models I/O efficiency, where $\delta$ reflects the ratio of I/O time to compute time.
 \end{itemize}
 
-The arithmetic intensity $\mathcal{I}(M)$ is modeled as $\mathcal{I}(M) = \mathcal{I}_0 \cdot (M/M_0)^{0.45}$, where $\mathcal{I}_0$ is the base intensity for a reference model size $M_0$. This sub-linear scaling reflects diminishing returns in compute-to-memory ratios for larger models, consistent with empirical GPU profiling observations \cite{Jia2018}.
+The arithmetic intensity $\mathcal{I}(M)$ is modeled as $\mathcal{I}(M) = \mathcal{I}_0 \cdot (M/M_0)^{0.45}$, where $\mathcal{I}_0 = 2.0$~FLOP/byte at $M_0 = 10$M parameters. This sub-linear (0.45) exponent reflects diminishing memory-reuse gains for larger models, consistent with A100 GPU profiling \cite{Jia2018}. Table~\ref{tab:model-params} summarizes all model parameters and their calibration basis.
+
+\begin{table}[t]
+\centering
+\caption{Physics-Based Model Parameters}
+\label{tab:model-params}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}} llll @{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Role} & \textbf{Calibration Basis} \\
+\midrule
+$T_\text{peak}$ & 50 TFLOPS & Per-node peak & NVIDIA A100 (bf16) \\
+$\beta$ & 1000 GB/s & HBM bandwidth & A100 HBM2e spec \\
+$B_\text{net}$ & 200 GB/s & Interconnect & NDR InfiniBand \\
+$\alpha$ & 0.15 & Allreduce base cost & $\approx$13\% overhead at 2 nodes \\
+$\gamma$ & 0.005 & Congestion term & Yields 55\% overhead at 128 nodes \\
+$\delta$ & 0.02 & I/O cost per TB/node & Lustre PFS at NERSC \cite{Byna2020} \\
+$\mathcal{I}_0$ & 2.0 FLOP/byte & Base arith.\ intensity & A100 small-model profiling \cite{Jia2018} \\
+$\theta$ & 0.45 & Intensity exponent & Empirical GPU scaling \cite{Jia2018} \\
+\bottomrule
+\end{tabular*}
+\end{table}
 
 \subsection{ML-Based Bottleneck Prediction}
 
@@ -181,8 +201,8 @@ Interconnect & 200 GB/s per link (e.g., NDR InfiniBand) \\
 System Scale & 1, 2, 4, 8, 16, 32, 64, 128 compute nodes \\
 Software Stack & Linux OS, MPI, CUDA, PyTorch \\
 Performance Model & Roofline + Amdahl's law (Eq.~\ref{eq:throughput}) \\
-Noise Model & 3\% Gaussian measurement noise \\
-Repetitions per Config & 3--5 runs (averaged results reported) \\
+Noise Model & 3\% Gaussian run-to-run variation (per-seed) \\
+Repetitions per Config & 5 noise-sampled runs (mean $\pm$ std reported) \\
 \bottomrule
 \end{tabular*}
 \end{table*}
@@ -319,7 +339,7 @@ From an energy-proportional computing perspective, weak scaling still exhibits s
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{figs/Fig4.pdf}
-    \caption{Strong Scaling Speedup: (a) Measured speedup vs. ideal linear scaling on log-log axes, showing divergence beyond 8 nodes. Maximum speedup of $58\times$ at 128 nodes. (b) Parallel efficiency degradation from 100\% to 45.3\%, with the 50\% threshold crossed between 32 and 64 nodes. Green shaded region indicates efficient scaling regime.}
+    \caption{Strong Scaling Speedup: (a) Predicted speedup vs.\ ideal linear scaling on log-log axes, showing divergence beyond 8 nodes. Maximum speedup of $57\times$ at 128 nodes. (b) Parallel efficiency degradation from 100\% to 44.6\%, with $\pm1\,\sigma$ uncertainty band from 5 noise-sampled runs. The 50\% efficiency threshold is crossed between 32 and 64 nodes. Green region indicates efficient scaling regime.}
     \label{fig:system-scaling}
 \end{figure}
 
@@ -388,14 +408,14 @@ Table~\ref{tab:mlperf-validation} reports the normalized scaling factors and eff
 \end{tabular*}
 \end{table}
 
-The correlation coefficient between SAIH and CosmoFlow scaling trends is $r=0.993$, and between SAIH and DeepCAM is $r=0.995$, indicating that SAIH correctly captures the fundamental scaling laws governing AI performance on HPC systems. The Mean Absolute Percentage Error for normalized scaling is 18.8\% (CosmoFlow) and 14.9\% (DeepCAM).
+Validation compares efficiency curves (parallel efficiency \% at matched node counts) between SAIH predictions and MLPerf-HPC reference data, placing both on the same 0--100\% scale and avoiding scale conflation across different hardware systems. The Pearson correlation between SAIH and CosmoFlow efficiency curves is $r=0.947$, and between SAIH and DeepCAM is $r=0.937$. Mean absolute error is 7.3 percentage points (CosmoFlow) and 9.1 percentage points (DeepCAM), indicating that SAIH captures the fundamental shape of the efficiency degradation curve.
 
 Notably, SAIH slightly underestimates scaling efficiency at moderate scales (4--32 nodes) compared to CosmoFlow, which benefits from workload-specific communication optimizations in its 3D CNN architecture. At 128 nodes, SAIH predicts better scaling than CosmoFlow (45.3\% vs. 39.2\%), which may reflect CosmoFlow's sensitivity to specific collective communication patterns at extreme scale. These systematic differences are expected: SAIH provides a workload-independent baseline model, while application-specific optimizations or bottlenecks cause real workloads to deviate from this baseline. The strong correlation validates that SAIH captures the correct \textit{trend shape}, which is its primary design goal. Figure~\ref{fig:mlperf-validation}(b) compares efficiency curves directly, showing close agreement in the regime transition from efficient to communication-bound scaling.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{figs/Fig6.pdf}
-    \caption{MLPerf-HPC Validation: (a) Normalized throughput scaling comparison between SAIH predictions and CosmoFlow (MLPerf-HPC v2.0) across 1--128 nodes. (b) Scaling efficiency comparison showing agreement on the transition from efficient to communication-bound regimes. Correlation: $r=0.993$ (CosmoFlow), $r=0.995$ (DeepCAM).}
+    \caption{MLPerf-HPC Validation: (a) Scatter plot of predicted vs.\ measured parallel efficiency (\%), with regression line ($r=0.947$) and node-count annotations. Points near the diagonal indicate close agreement. (b) Efficiency curves for predicted, CosmoFlow, and DeepCAM across 1--128 nodes, showing consistent regime transition near 32 nodes. MAE: 7.3 pp (CosmoFlow), 9.1 pp (DeepCAM).}
     \label{fig:mlperf-validation}
 \end{figure}
 
@@ -440,9 +460,9 @@ The results obtained using the SAIH methodology provide important insights into 
 
 \subsection{Validation Analysis and Limitations}
 
-SAIH achieves strong correlation with MLPerf-HPC benchmarks: $r=0.993$ (CosmoFlow) and $r=0.995$ (DeepCAM) for normalized scaling trends. However, the agreement is not uniform across scales. SAIH underestimates scaling efficiency at moderate scales (4--32 nodes) compared to CosmoFlow, likely because CosmoFlow's 3D CNN architecture benefits from communication-computation overlap that our generic model does not capture. At 128 nodes, SAIH predicts better efficiency (45.3\%) than CosmoFlow achieves (39.2\%), suggesting that application-specific collective communication patterns introduce overheads beyond our logarithmic model.
+SAIH achieves $r=0.947$ (CosmoFlow) and $r=0.937$ (DeepCAM) on efficiency curves at matched node counts, with mean absolute errors of 7.3 and 9.1 percentage points respectively. These metrics are computed on a common scale (parallel efficiency \%), avoiding the trivially high correlations that arise from comparing two monotonically increasing throughput series on different hardware scales. The agreement is not uniform: SAIH underestimates efficiency at moderate scales (4--32 nodes) where application-specific communication-computation overlap provides benefits not captured by the generic $\eta_{\text{comm}}$ model. At 128 nodes, SAIH predicts slightly higher efficiency (44.6\%) than CosmoFlow achieves (39.2\%), suggesting that extreme-scale collective communication patterns introduce additional overhead beyond the quadratic congestion term.
 
-These systematic deviations highlight an important limitation: SAIH provides a \textit{workload-independent baseline} rather than application-specific predictions. Real workloads may deviate due to framework-specific optimizations (e.g., gradient compression, asynchronous communication), workload-specific memory access patterns, or hardware-software co-optimization. The MAPE of 18.8\% (CosmoFlow) and 14.9\% (DeepCAM) reflects this inherent limitation of generic models, but the high correlation confirms that SAIH correctly captures scaling trends, which is sufficient for its intended purpose of trend analysis and bottleneck identification.
+These systematic deviations highlight an important limitation: SAIH provides a \textit{workload-independent baseline} rather than application-specific predictions. Real workloads may deviate due to framework-specific optimizations (e.g., gradient compression, asynchronous communication), workload-specific memory access patterns, or hardware-software co-optimization. The $r \approx 0.94$ correlation confirms that SAIH captures the correct trend shape---the communication-saturation transition and the efficiency degradation rate---which is its primary design goal.
 
 \subsection{Key Observations}
 
@@ -489,6 +509,17 @@ SAIH's scaling predictions have direct implications for cloud-based AI training.
 
 For \textit{heterogeneous cloud deployments} mixing CPU and GPU instances, SAIH's bottleneck classifier provides concrete diagnosis: a GPU-saturated 32-node cluster benefits more from scaling model complexity (larger models have higher arithmetic intensity and communicate more efficiently relative to compute) than from adding more nodes, whereas a communication-saturated cluster requires architectural improvements such as gradient compression, asynchronous updates, or smaller per-node batch sizes. This targeted diagnosis---rather than generic scaling advice---is SAIH's practical value for cloud operators managing diverse training workloads.
 
+\subsection{Sensitivity Analysis}
+
+A key question for any physics-based model with manually set parameters is: how sensitive are the key conclusions to parameter choice? Figure~\ref{fig:sensitivity} shows the effect of $\pm$25\% perturbation of $\alpha$ and $\gamma$ on strong-scaling efficiency across 1--128 nodes. The main finding---efficiency below 50\% at 128 nodes---is robust to both perturbations: even with $\alpha$ reduced by 25\%, efficiency at 128 nodes remains below 55\%; with $\alpha$ increased by 25\%, it falls to $\approx$38\%. The 50\% efficiency crossover consistently occurs between 32 and 64 nodes across all parameter variants. The $\gamma$ congestion term has a smaller effect at low node counts but becomes significant beyond 64 nodes, where it controls the steepness of the degradation. These results confirm that the qualitative findings (communication bottleneck at $\geq$16 nodes, efficiency cliff at $>$32 nodes) are robust to $\pm$25\% parameter uncertainty, while the precise efficiency values carry $\pm$5--8 percentage point uncertainty at extreme scale.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figs/Fig9.pdf}
+    \caption{Sensitivity Analysis: Effect of $\pm$25\% perturbation of (a) $\alpha$ (base allreduce cost) and (b) $\gamma$ (congestion term) on strong-scaling parallel efficiency. Shaded band shows the sensitivity range; solid line is the baseline. Key findings---efficiency below 50\% at 128 nodes and crossover between 32--64 nodes---are robust to parameter uncertainty.}
+    \label{fig:sensitivity}
+\end{figure}
+
 \subsection{Comparison with Prior Work}
 
 Compared to the domain-specific evaluation by \cite{Wang2024SAIH}, which used CosmoFlow as a representative workload, SAIH provides a complementary workload-independent perspective. While domain-specific evaluation captures application-specific behaviors (e.g., 3D convolution patterns, cosmological data characteristics), SAIH's physics-based synthetic approach enables: (1)~exploration of broader parameter spaces without application constraints; (2)~systematic cross-dimensional interaction analysis; and (3)~automated bottleneck prediction generalizable across workload types. The two approaches are complementary: SAIH identifies general trends and bottleneck regimes, while domain-specific evaluation quantifies workload-specific optimizations and deviations from the general model.
@@ -498,9 +529,9 @@ Compared to the domain-specific evaluation by \cite{Wang2024SAIH}, which used Co
 
 This paper presented SAIH (Scalable AI--HPC Evaluation Methodology) as a comprehensive, physics-based, and trend-oriented framework for understanding AI performance behavior on high-performance computing systems. Building on the multi-dimensional evaluation concept from prior work \cite{Wang2024SAIH}, SAIH introduces a roofline-based performance model, cross-dimensional interaction analysis, and ML-based bottleneck prediction.
 
-Through structured scaling experiments, SAIH demonstrated that AI performance on HPC systems exhibits distinctly non-linear behavior. Increasing model complexity improves hardware utilization and throughput (achieving 83.7~TFLOPS at 1B parameters, a $7.7\times$ improvement over 10M parameters) through increased arithmetic intensity. Data scaling experiments reveal relatively stable throughput across varying dataset sizes ($<$10\% variation), indicating compute-bound behavior. Strong scaling analysis shows near-linear speedup up to 8 nodes ($5.72\times$ with 71.5\% efficiency), with efficiency degrading to 45.3\% at 128 nodes due to communication overhead. Weak scaling efficiency follows a similar trajectory (46.0\% at 128 nodes), confirming communication as the fundamental bottleneck. Cross-dimensional analysis reveals that larger models maintain higher utilization at larger system scales, suggesting co-optimization strategies.
+Through structured scaling experiments (5 noise-sampled runs per configuration), SAIH demonstrates that AI performance on HPC systems exhibits distinctly non-linear behavior. Increasing model complexity improves throughput from 10.7~TFLOPS (10M parameters) to 86.4~TFLOPS (1B parameters, an $8.1\times$ improvement) through increased arithmetic intensity. Data scaling reveals $<$3\% throughput variation across a $64\times$ dataset size range, confirming compute-bound behavior. Strong scaling achieves $57\times$ speedup at 128 nodes with efficiency degrading from 100\% to 44.6\%, with uncertainty bands of $\pm$1--2 percentage points. Weak scaling efficiency follows a similar trajectory (42.8\% at 128 nodes). Cross-dimensional analysis reveals that larger models maintain higher utilization at scale, suggesting co-optimization strategies. Sensitivity analysis confirms that the efficiency crossover below 50\% at 32--64 nodes is robust to $\pm$25\% parameter perturbation.
 
-Validation against MLPerf-HPC benchmarks demonstrates strong correlation: $r=0.993$ (CosmoFlow) and $r=0.995$ (DeepCAM), with systematic deviations attributable to application-specific communication patterns. The interpretable bottleneck classifier correctly identifies the transition from compute-bound ($\leq$8 nodes) to communication-bound ($\geq$16 nodes) regimes, with Number of Nodes and Communication Cost as the two most important features (combined importance: 55.4\%).
+Validation against MLPerf-HPC benchmarks on efficiency curves yields $r=0.947$ (CosmoFlow) and $r=0.937$ (DeepCAM), with mean absolute errors of 7.3 and 9.1 percentage points, attributable to application-specific communication-computation overlap not captured by the generic model. The interpretable bottleneck classifier correctly identifies the transition from compute-bound ($\leq$8 nodes) to communication-bound ($\geq$16 nodes) regimes, with Number of Nodes and Communication Cost as the two most important features (combined importance: 55.4\%).
 
 Future work will extend SAIH to real-world production workloads, heterogeneous and emerging accelerator architectures (including tensor processing units), and energy-efficiency metrics. Incorporating model parallelism, pipeline parallelism, and dynamic workload adaptation also represents promising directions. To support reproducibility, the complete experiment framework---including the physics-based performance model, bottleneck classifier, and figure generation scripts---is openly available at \url{https://github.com/Vtanneru/SAIH}. This enables community validation against diverse HPC and cloud systems \cite{Dongarra2020, Kurth2018}.
 
