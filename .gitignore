@@ -39,3 +39,8 @@ Thumbs.db
 
 # Large output files (keep PDFs that are figures or final paper)
 experiment_results/
+
+SAIH.tex
+SAIH.pdf
+INDEX.MD
+
